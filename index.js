@@ -2,6 +2,8 @@ const { json } = require("express");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const express = require("express");
 const cors = require("cors");
+const jwt = require("jsonwebtoken");
+require("dotenv").config();
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -13,6 +15,9 @@ app.use(json());
 // user carDoctorDBUser
 // password YPEFKVq9FbSZfWsV
 
+///jwt
+//657516e52990a1d4033aad95e54b6f9336a2cdcee0c618af01f51d3a9877681bed976baa7ebac2f7a2148988c1f6b6c2d96d09a39c6d3bd99b770b5f688db0d4
+
 const uri = "mongodb+srv://carDoctorDBUser:YPEFKVq9FbSZfWsV@cluster0.d4mp0ot.mongodb.net/?retryWrites=true&w=majority";
 const client = new MongoClient(uri, {
   useNewUrlParser: true,
@@ -20,10 +25,34 @@ const client = new MongoClient(uri, {
   serverApi: ServerApiVersion.v1,
 });
 
+function verifyJWT(req, res, next) {
+  // console.log(req.headers.authorization);
+
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).send({ message: "unauthorized access" });
+  }
+  const token = authHeader.split(" ")[1];
+  jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, function (err, decoded) {
+    if (err) {
+      res.status(401).send({ message: "unauthorized access" });
+    }
+    req.decoded = decoded;
+    next();
+  });
+}
+
 async function run() {
   try {
     const serviceCollection = client.db("carDoctor").collection("services");
     const orderCollection = client.db("carDoctor").collection("orders");
+
+    app.post("/jwt", async (req, res) => {
+      const user = req.body;
+      // console.log(user);
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: "1d" });
+      res.send({ token });
+    });
 
     app.get("/services", async (req, res) => {
       const query = {};
@@ -41,8 +70,15 @@ async function run() {
 
     // orders Api
 
-    app.get("/orders", async (req, res) => {
+    app.get("/orders", verifyJWT, async (req, res) => {
       // console.log(req.query);
+
+      const decoded = req.decoded;
+
+      if (decoded.email !== req.query.email) {
+        res.status(403).send({ message: "unauthorized access" });
+      }
+
       let query = {};
       if (req.query.email) {
         query = {
